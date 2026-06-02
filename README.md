@@ -126,9 +126,3 @@ CONFIG_SDMMC_STACK=y
 CONFIG_SDMMC_SUBSYS=y
 CONFIG_SD_FAT32=y
 ```
-
-## Repository hygiene
-
-Editor folders, build outputs, and Finder artifacts are intentionally ignored.
-Tracked generated files from older commits may still appear as deletions until
-the cleanup is committed, but new builds should stay out of the repo.
