@@ -10,10 +10,12 @@
 #include <zephyr/console/console.h>
 
 #define MY_STACK_SIZE 2048
-#define MY_PRIORITY 1
+#define MY_PRIORITY 2
 
-K_CONDVAR_DEFINE(condVar);
+K_CONDVAR_DEFINE(condvar);
 K_MUTEX_DEFINE(mutex);
+
+K_SEM_DEFINE(sem, 0, 1);
 /* 1000 msec = 1 sec */
 #define SLEEP_TIME_MS 100
 
@@ -33,14 +35,32 @@ uint8_t logCnt = 0;
 int main(void)
 {
 
+	k_condvar_wait(&condvar, &mutex, K_FOREVER);
+	
 	while (1)
 	{
-		k_mutex_lock(&mutex, K_FOREVER);
+		k_sem_give(&sem);
+		k_msleep(500);
+	}
+	return 0;
+}
 
-		k_condvar_signal(&condVar);
+int myThread0(void *, void *, void *)
+{
+	int ret;
+	if (!gpio_is_ready_dt(&led0))
+		return 0;
+	ret = gpio_pin_configure_dt(&led0, GPIO_OUTPUT_INACTIVE);
+	if (ret < 0)
+		return 0;
+	while (1)
+	{
 
-		k_mutex_unlock(&mutex);
-		k_sleep(K_MSEC(500));
+		if (k_sem_take(&sem, K_FOREVER) == 0)
+		{
+
+			gpio_pin_toggle_dt(&led0);
+		}
 	}
 	return 0;
 }
@@ -57,40 +77,20 @@ int myThread1(void *, void *, void *)
 
 	while (1)
 	{
+		if (k_sem_take(&sem,K_FOREVER) == 0)
+		{
 
-		k_mutex_lock(&mutex, K_FOREVER);
-		k_condvar_wait(&condVar, &mutex, K_FOREVER);
-		ret = gpio_pin_toggle_dt(&led1);
-		if (ret < 0)
-			return 0;
-		k_mutex_unlock(&mutex);
-	}
-	return 0;
-}
-
-int myThread0(void *, void *, void *)
-{
-	int ret;
-	if (!gpio_is_ready_dt(&led0))
-		return 0;
-	ret = gpio_pin_configure_dt(&led0, GPIO_OUTPUT_INACTIVE);
-	if (ret < 0)
-		return 0;
-	while (1)
-	{
-		k_mutex_lock(&mutex, K_FOREVER);
-		k_condvar_wait(&condVar, &mutex, K_FOREVER);
-		ret = gpio_pin_toggle_dt(&led0);
-		if (ret < 0)
-			return 0;
-		k_mutex_unlock(&mutex);
+			ret = gpio_pin_toggle_dt(&led1);
+		}
+		else
+			printk("Timed out\n");
 	}
 	return 0;
 }
 
 K_THREAD_DEFINE(my_tid, MY_STACK_SIZE,
 				myThread0, NULL, NULL, NULL,
-				MY_PRIORITY, 0, 0);
+				2, 0, 0);
 
 K_THREAD_DEFINE(oled_tid, MY_STACK_SIZE,
 				myThread1, NULL, NULL, NULL,

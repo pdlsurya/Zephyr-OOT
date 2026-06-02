@@ -1,1 +1,0 @@
-"mcuboot":"/Users/pdlsurya/ZephyrSDK/bootloader/mcuboot":"/Users/pdlsurya/ZephyrSDK/bootloader/mcuboot/boot/zephyr/sysbuild"

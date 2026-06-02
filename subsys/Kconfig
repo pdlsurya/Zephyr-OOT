@@ -4,5 +4,4 @@
 
 rsource "sh1106_gfx/Kconfig"
 rsource "nrf24_ble/Kconfig"
-rsource "SdFat/Kconfig"
-
+rsource "sdFat32/Kconfig"

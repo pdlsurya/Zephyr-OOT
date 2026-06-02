@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "*.dts": "c",
-        "net_context.h": "c",
-        "sections.h": "c",
-        "time.h": "c"
-    }
-}

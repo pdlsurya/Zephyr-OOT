@@ -25,7 +25,7 @@
 const struct device *sh1106 = DEVICE_DT_GET(DT_NODELABEL(sh1106));
 
 
-static const struct gpio_dt_spec adv_led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+//static const struct gpio_dt_spec adv_led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 //static const struct gpio_dt_spec conn_led = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios);
 
 /* Custom Service Variables */
@@ -48,12 +48,12 @@ static uint8_t notif_cnt;
 void set_conn_led()
 {
 	//gpio_pin_set_dt(&conn_led, 1);
-	gpio_pin_set_dt(&adv_led, 0);
+	//gpio_pin_set_dt(&adv_led, 0);
 }
 
 void set_adv_led()
 {
-	gpio_pin_set_dt(&adv_led, 1);
+	//gpio_pin_set_dt(&adv_led, 1);
 	//gpio_pin_set_dt(&conn_led, 0);
 }
 
@@ -187,12 +187,13 @@ int chrc1_notify(uint8_t level)
 int main(void)
 {
 	int err;
-   
+   /*
 	if (!gpio_is_ready_dt(&adv_led))
 		return 0;
 	err = gpio_pin_configure_dt(&adv_led, GPIO_OUTPUT_INACTIVE);
 	if (err < 0)
 		return 0;
+		*/
     /*
 	if (!gpio_is_ready_dt(&conn_led))
 		return 0;

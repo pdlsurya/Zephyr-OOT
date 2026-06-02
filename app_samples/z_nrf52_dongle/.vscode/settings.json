@@ -1,9 +1,0 @@
-{
-    "C_Cpp.default.configurationProvider": "nordic-semiconductor.nrf-connect",
-    "cortex-debug.variableUseNaturalFormat": true,
-    "files.associations": {
-        "*.dts": "c",
-        "sdfat.h": "c",
-        "console.h": "c"
-    }
-}

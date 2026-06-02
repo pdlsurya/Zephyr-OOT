@@ -13,7 +13,7 @@
 #include <zephyr/console/console.h>
 #include <nrf24_ble.h>
 #include <nrf24_drv.h>
-#include <SdFat.h>
+#include <sdFat32.h>
 
 #define MY_STACK_SIZE 2048
 #define MY_PRIORITY 2
@@ -32,7 +32,7 @@ uint8_t count;
 
 const struct device *sh1106 = DEVICE_DT_GET(DT_NODELABEL(sh1106));
 /* 1000 msec = 1 sec */
-#define SLEEP_TIME_MS 500
+#define SLEEP_TIME_MS 1000
 
 /* The devicetree node identifier for the "led0" alias. */
 #define LED0_NODE DT_ALIAS(led0)
@@ -63,10 +63,10 @@ int main(void)
 	ble_set_mode(BLE_MODE_ADVERTISE);
    
 	k_msleep(3000);
-	if (!SdFat_init())
-		printk("SdFat init failed\n");
+	if (!sdFat32Init())
+		printk("sdFat32 init failed\n");
 	else
-		printk("SdFat init success\n");
+		printk("sdFat32 init success\n");
 
 	while (1)
 	{
@@ -121,7 +121,7 @@ void myThread1(void *, void *, void *)
 		{
 			oled_printLog(sh1106, s);
 			oled_display(sh1106);
-			listDir(s);
+			listDirectory(s);
 		}
 	}
 }
@@ -147,6 +147,7 @@ int myThread0(void *, void *, void *)
 		if (ret < 0)
 			return 0;
 		k_msleep(SLEEP_TIME_MS);
+		printk("Hello from esp32c6\n");
 		// k_sem_give(&sem);
 	}
 	return 0;

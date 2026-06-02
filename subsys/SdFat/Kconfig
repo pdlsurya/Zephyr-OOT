@@ -1,9 +1,0 @@
-
-# Copyright (c) 2023 Surya Poudel
-# SPDX-License-Identifier: Apache-2.0
-
-config SD_FAT
-	bool "FAT file system lib for SD card"
-	default n
-	help
-	 Enable SD-FAT library.

@@ -6,10 +6,6 @@ get_filename_component(OOT_MODULE_DIR "${CMAKE_CURRENT_LIST_DIR}/../.." REALPATH
 list(APPEND EXTRA_ZEPHYR_MODULES "${OOT_MODULE_DIR}")
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(z_stm32f4ccu6)
+project(esp32c6_blinky)
 
 target_sources(app PRIVATE src/main.c)
-
-
-
-

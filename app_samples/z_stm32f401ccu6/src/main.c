@@ -13,7 +13,7 @@
 #include <zephyr/console/console.h>
 #include <nrf24_ble.h>
 #include <nrf24_drv.h>
-#include <SdFat.h>
+#include <sdFat32.h>
 
 #define MY_STACK_SIZE 2048
 #define MY_PRIORITY 2
@@ -64,12 +64,12 @@ int main(void)
 	ble_set_mode(BLE_MODE_ADVERTISE);
    */
   
-	if (!SdFat_init())
-		printk("SdFat init failed\n");
+	if (!sdFat32Init())
+		printk("sdFat32 init failed\n");
 	else
-		printk("SdFat init success\n");
+		printk("sdFat32 init success\n");
 	k_msleep(3000);
-	//listDir("/drivers");
+	//listDirectory("/drivers");
 	while (1)
 	{
 
@@ -130,7 +130,7 @@ void myThread1(void *, void *, void *)
 			oled_printLog(sh1106, s);
 			oled_display(sh1106);
 			printk(">>> %s",s);
-			//listDir(s);
+			//listDirectory(s);
 		}
 		k_msleep(1);
 	}

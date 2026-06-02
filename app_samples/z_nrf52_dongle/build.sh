@@ -1,2 +1,2 @@
-source ~/ZephyrSDK/zephyr/zephyr-env.sh
-west build -p auto -b nrf52840dongle
+source ~/zephyrproject/zephyr/zephyr-env.sh
+west build -p always  -b nrf52840dongle
