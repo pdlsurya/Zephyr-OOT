@@ -35,7 +35,7 @@ int main(void)
             printk("Failed to toggle LED GPIO: %d\n", ret);
             return 0;
         }
-
+        printk("LED toggled\n");
         k_msleep(BLINK_DELAY_MS);
     }
 }
