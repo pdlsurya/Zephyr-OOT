@@ -4,5 +4,6 @@
 config SD_FAT32
 	bool "FAT32 file system lib for SD card"
 	default n
+	depends on SD_DRV
 	help
 	 Enable the sdFat32 file system library.

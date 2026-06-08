@@ -1,0 +1,12 @@
+sample:
+  name: BLE peripheral with SH1106 display
+  description: Custom Bluetooth peripheral sample that mirrors connection and write events on an SH1106 OLED
+tests:
+  sample.oot.ble_peripheral_display:
+    build_only: true
+    platform_allow:
+      - esp32c6_custom/esp32c6/hpcore
+      - nrf52840dongle/nrf52840
+    tags:
+      - bluetooth
+      - display

@@ -1,0 +1,9 @@
+# Copyright (c) 2026 Surya Poudel
+# SPDX-License-Identifier: Apache-2.0
+
+config TFT_GFX
+	bool "TFT graphics subsystem"
+	default n
+	depends on TFT_DRV
+	help
+	  Enable the TFT graphics subsystem and font assets.

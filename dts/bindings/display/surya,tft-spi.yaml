@@ -1,0 +1,49 @@
+# Copyright (c) 2026 Surya Poudel
+# SPDX-License-Identifier: Apache-2.0
+
+description: SPI TFT controller binding owned by the Zephyr-OOT module.
+
+compatible: "surya,tft-spi"
+
+include: [ spi-device.yaml ]
+
+properties:
+  dc-gpios:
+    type: phandle-array
+    required: true
+    description: Data/command select GPIO.
+
+  reset-gpios:
+    type: phandle-array
+    required: false
+    description: Optional hardware reset GPIO.
+
+  width:
+    type: int
+    required: true
+    description: Native panel width in pixels at rotation 0.
+
+  height:
+    type: int
+    required: true
+    description: Native panel height in pixels at rotation 0.
+
+  rotation:
+    type: int
+    required: false
+    default: 0
+    enum:
+      - 0
+      - 1
+      - 2
+      - 3
+    description: Initial rotation, in quarter turns clockwise.
+
+  controller:
+    type: string
+    required: true
+    enum:
+      - "ili9341"
+      - "st7789"
+      - "st7796"
+    description: TFT controller model used for MADCTL and inversion defaults.

@@ -4,7 +4,8 @@
 config NRF24_DRV
 	bool "NRF24 wireless module driver"
 	default n
+	depends on DT_HAS_NORDIC_NRF24_ENABLED
+	select GPIO
 	select SPI
 	help
 	 Enable NRF24 driver module.
-

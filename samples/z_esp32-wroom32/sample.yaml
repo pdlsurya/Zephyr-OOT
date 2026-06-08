@@ -1,0 +1,14 @@
+sample:
+  name: ESP32-C6 OLED, NRF24, and sdFat32 demo
+  description: Board-specific integration sample for the local SH1106, NRF24 BLE, and sdFat32 modules
+tests:
+  sample.oot.z_esp32_wroom32:
+    build_only: true
+    platform_allow:
+      - esp32c6_custom/esp32c6/hpcore
+    tags:
+      - bluetooth
+      - display
+      - filesystem
+      - gpio
+      - spi

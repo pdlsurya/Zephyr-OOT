@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include "sh1106_gfx.h"
+#include <zephyr_oot/subsys/sh1106_gfx.h>
 #include "sh1106_font.h"
 
 #define min(x, y) ((x) < (y) ? (x) : (y))

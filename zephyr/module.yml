@@ -1,11 +1,12 @@
 # Copyright (c) 2023, Surya Poudel
 # SPDX-License-Identifier: Apache-2.0
 
-name: Out-of-tree drivers and subsystems.
+name: zephyr_oot
 build:
   cmake: .
   kconfig: Kconfig
   settings:
+    board_root: .
     dts_root: .
-
-    
+samples:
+  - samples

@@ -1,0 +1,11 @@
+sample:
+  name: nRF52840 Dongle LED sync demo
+  description: Board-specific semaphore and dual-LED demo for the nRF52840 dongle
+tests:
+  sample.oot.z_nrf52_dongle:
+    build_only: true
+    platform_allow:
+      - nrf52840dongle/nrf52840
+    tags:
+      - gpio
+      - kernel

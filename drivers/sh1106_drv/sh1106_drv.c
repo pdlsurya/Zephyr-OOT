@@ -24,8 +24,6 @@
 
 LOG_MODULE_REGISTER(sh1106_driver, CONFIG_DISPLAY_LOG_LEVEL);
 
-
-// #define i2c_spec.addr DT_REG_ADDR(DT_NODELABEL(sh1106))
 #define DISP_ON              0xAF
 #define DISP_OFF             0xAE
 #define NORM_MODE            0xA6
@@ -41,7 +39,7 @@ LOG_MODULE_REGISTER(sh1106_driver, CONFIG_DISPLAY_LOG_LEVEL);
 
 #define FRAME_BUFFER ((uint8_t (*)[128])dev->data)
 
-uint8_t i2c_tx_buf_temp[129];
+static uint8_t i2c_tx_buf_temp[129];
 
 static uint8_t frameBuffer[1024];
 

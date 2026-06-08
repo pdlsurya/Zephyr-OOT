@@ -1,0 +1,27 @@
+&i2c1 {
+    sh1106:sh1106@3c{
+        compatible="sinowealth,sh1106-custom";
+        status="okay";
+        reg=<0x3c>;
+    };
+};
+
+&spi1 {
+    status = "okay";
+    cs-gpios = <&gpioa 4 GPIO_ACTIVE_LOW> , <&gpioa 4 GPIO_ACTIVE_LOW>;
+
+    microsd:microsd@0{
+     compatible ="zephyr,sdhc-spi-slot";
+     spi-max-frequency= <8000000>;
+     reg = <0>;
+     status="okay";
+    };
+
+    nrf24:nrf24@1{
+        compatible="nordic,nrf24";
+        spi-max-frequency=<8000000>;
+        ce-gpios=<&gpioa 3 GPIO_ACTIVE_HIGH>;
+        reg=<1>;
+        status="okay";
+    };
+};

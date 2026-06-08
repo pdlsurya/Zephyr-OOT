@@ -1,0 +1,13 @@
+sample:
+  name: STM32F401 OLED and sdFat32 demo
+  description: Board-specific integration sample for the SH1106 and sdFat32 subsystems on STM32F401
+tests:
+  sample.oot.z_stm32f401ccu6:
+    build_only: true
+    platform_allow:
+      - blackpill_f401cc
+    tags:
+      - display
+      - filesystem
+      - gpio
+      - spi

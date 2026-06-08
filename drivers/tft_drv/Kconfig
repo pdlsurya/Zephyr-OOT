@@ -1,0 +1,11 @@
+# Copyright (c) 2026 Surya Poudel
+# SPDX-License-Identifier: Apache-2.0
+
+config TFT_DRV
+	bool "SPI TFT display driver"
+	default n
+	depends on DT_HAS_SURYA_TFT_SPI_ENABLED
+	select SPI
+	select GPIO
+	help
+	  Enable the Zephyr-style SPI TFT driver.

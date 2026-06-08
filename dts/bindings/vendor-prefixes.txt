@@ -1,0 +1,4 @@
+# Device tree binding vendor prefix registry for the Zephyr-OOT module.
+# Keep entries in alphabetical order.
+
+surya	Surya Poudel

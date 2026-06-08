@@ -1,811 +1,678 @@
-/**
- * @file SD_driver.c
- * @author Surya Poudel
- * @brief  Driver for SD/uSD card connected to SPI bus
- * @version 0.1
- * @date 2023-06-14
- * 
- * @copyright Copyright (c) 2023
- * 
+/*
+ * Copyright (c) 2026 Surya Poudel
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/kernel.h>
+#define DT_DRV_COMPAT zephyr_sdhc_spi_slot
+
+#include <errno.h>
+#include <stdbool.h>
+#include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/spi.h>
-#include <zephyr/drivers/gpio.h>
-#include <zephyr/sys/printk.h>
-#include "SD_drv.h"
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 
-#define CMD0 0
-#define CMD0_ARG 0x00000000
-#define CMD0_CRC 0x94
+#include <zephyr_oot/drivers/SD_drv.h>
 
-// SEND IF_COND
-#define CMD8 8
-#define CMD8_ARG 0x000001AA
-#define CMD8_CRC 0x86 //(1000011 << 1)
+LOG_MODULE_REGISTER(sd_drv);
 
-// READ CSD
-#define CMD9 9
-#define CMD9_ARG 0x00000000
-#define CMD9_CRC 0x00
+#define CMD0 0U
+#define CMD0_ARG 0x00000000U
+#define CMD0_CRC 0x94U
 
-// Read OCR
-#define CMD58 58
-#define CMD58_ARG 0x00000000
-#define CMD58_CRC 0x00
+#define CMD8 8U
+#define CMD8_ARG 0x000001AAU
+#define CMD8_CRC 0x86U
 
-#define CMD55 55
-#define CMD55_ARG 0x00000000
-#define CMD55_CRC 0x00
+#define CMD9 9U
+#define CMD9_ARG 0x00000000U
+#define CMD9_CRC 0x00U
 
-#define ACMD41 41
-#define ACMD41_ARG 0x40000000
-#define ACMD41_CRC 0x00
+#define CMD58 58U
+#define CMD58_ARG 0x00000000U
+#define CMD58_CRC 0x00U
 
-// Read Single Block
-#define CMD17 17
-#define CMD17_CRC 0x95
-#define SD_MAX_READ_ATTEMPTS 4500
+#define CMD55 55U
+#define CMD55_ARG 0x00000000U
+#define CMD55_CRC 0x00U
 
-// Write Single Block
-#define CMD24 24
-#define CMD24_CRC 0x00
-#define SD_MAX_WRITE_ATTEMPTS 3907
+#define ACMD41 41U
+#define ACMD41_ARG 0x40000000U
+#define ACMD41_CRC 0x00U
 
-// Read Multiple Block
-#define CMD18 18
-#define CMD18_CRC 0x00
+#define CMD17 17U
+#define CMD17_CRC 0x95U
 
-// STOP_MULTIPLE_READ
-#define CMD12 12
-#define CMD12_ARG 0x00000000
-#define CMD12_CRC 0x00
+#define CMD24 24U
+#define CMD24_CRC 0x00U
 
-// Write Multiple Block
-#define CMD25 25
-#define CMD25_CRC 0x00
+#define CMD18 18U
+#define CMD18_CRC 0x00U
 
-#define PARAM_ERROR(X) X & 0b01000000
-#define ADDR_ERROR(X) X & 0b00100000
-#define ERASE_SEQ_ERROR(X) X & 0b00010000
-#define CRC_ERROR(X) X & 0b00001000
-#define ILLEGAL_CMD(X) X & 0b00000100
-#define ERASE_RESET(X) X & 0b00000010
-#define IN_IDLE(X) X & 0b00000001
+#define CMD12 12U
+#define CMD12_ARG 0x00000000U
+#define CMD12_CRC 0x00U
 
-#define CMD_VER(X) ((X >> 4) & 0x0F)
-#define VOL_ACC(X) (X & 0x1F)
+#define SD_MAX_READ_ATTEMPTS 4500U
+#define SD_MAX_WRITE_ATTEMPTS 3907U
 
-#define VOLTAGE_ACC_27_33 0b00000001
-#define VOLTAGE_ACC_LOW 0b00000010
-#define VOLTAGE_ACC_RES1 0b00000100
-#define VOLTAGE_ACC_RES2 0b00001000
+#define PARAM_ERROR(x) ((x) & 0b01000000U)
+#define ADDR_ERROR(x) ((x) & 0b00100000U)
+#define ERASE_SEQ_ERROR(x) ((x) & 0b00010000U)
+#define CRC_ERROR(x) ((x) & 0b00001000U)
+#define ILLEGAL_CMD(x) ((x) & 0b00000100U)
+#define ERASE_RESET(x) ((x) & 0b00000010U)
+#define IN_IDLE(x) ((x) & 0b00000001U)
 
-#define POWER_UP_STATUS(X) X & 0x80
-#define CCS_VAL(X) X & 0x40
-#define VDD_2728(X) X & 0b10000000
-#define VDD_2829(X) X & 0b00000001
-#define VDD_2930(X) X & 0b00000010
-#define VDD_3031(X) X & 0b00000100
-#define VDD_3132(X) X & 0b00001000
-#define VDD_3233(X) X & 0b00010000
-#define VDD_3334(X) X & 0b00100000
-#define VDD_3435(X) X & 0b01000000
-#define VDD_3536(X) X & 0b10000000
+#define VOL_ACC(x) ((x) & 0x1FU)
 
-#define SD_TOKEN_OOR(X) X & 0b00001000
-#define SD_TOKEN_CECC(X) X & 0b00000100
-#define SD_TOKEN_CC(X) X & 0b00000010
-#define SD_TOKEN_ERROR(X) X & 0b00000001
+#define VOLTAGE_ACC_27_33 0b00000001U
+#define VOLTAGE_ACC_LOW 0b00000010U
+#define VOLTAGE_ACC_RES1 0b00000100U
+#define VOLTAGE_ACC_RES2 0b00001000U
 
-#define SD_START_TOKEN 0xFE
-#define SD_BLOCK_LEN 512
+#define POWER_UP_STATUS(x) ((x) & 0x80U)
+#define CCS_VAL(x) ((x) & 0x40U)
+#define VDD_2728(x) ((x) & 0b10000000U)
+#define VDD_2829(x) ((x) & 0b00000001U)
+#define VDD_2930(x) ((x) & 0b00000010U)
+#define VDD_3031(x) ((x) & 0b00000100U)
+#define VDD_3132(x) ((x) & 0b00001000U)
+#define VDD_3233(x) ((x) & 0b00010000U)
+#define VDD_3334(x) ((x) & 0b00100000U)
+#define VDD_3435(x) ((x) & 0b01000000U)
+#define VDD_3536(x) ((x) & 0b10000000U)
 
-struct spi_dt_spec spi_drv_spec = SPI_DT_SPEC_GET(DT_NODELABEL(microsd), (SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8) | SPI_HOLD_ON_CS | SPI_LOCK_ON), 0);
+#define SD_TOKEN_OOR(x) ((x) & 0b00001000U)
+#define SD_TOKEN_CECC(x) ((x) & 0b00000100U)
+#define SD_TOKEN_CC(x) ((x) & 0b00000010U)
+#define SD_TOKEN_ERROR(x) ((x) & 0b00000001U)
 
-uint8_t spi_tx_buf[512];
+#define SD_START_TOKEN 0xFEU
+#define SD_BLOCK_LEN 512U
 
-void SD_spi_transceive(uint8_t *tx_buffer, uint8_t *rx_buffer, uint16_t len)
+struct sd_drv_config {
+	struct spi_dt_spec bus;
+};
+
+struct sd_drv_data {
+	struct k_mutex lock;
+	uint8_t spi_tx_buf[SD_BLOCK_LEN];
+	bool initialized;
+	bool multi_read_active;
+};
+
+static int sd_spi_transceive(const struct device *dev, const uint8_t *tx_buffer,
+			     uint8_t *rx_buffer, uint16_t len)
 {
+	const struct sd_drv_config *config = dev->config;
+	struct spi_buf tx_buf = {
+		.buf = (void *)tx_buffer,
+		.len = len,
+	};
+	struct spi_buf_set tx_bufs = {
+		.buffers = &tx_buf,
+		.count = 1,
+	};
 
-    struct spi_buf tx_buf = {
-        .buf = tx_buffer,
-        .len = len};
+	if (rx_buffer != NULL) {
+		struct spi_buf rx_buf = {
+			.buf = rx_buffer,
+			.len = len,
+		};
+		struct spi_buf_set rx_bufs = {
+			.buffers = &rx_buf,
+			.count = 1,
+		};
 
-    struct spi_buf_set tx_bufs = {
-        .buffers = &tx_buf,
-        .count = 1};
+		return spi_transceive_dt(&config->bus, &tx_bufs, &rx_bufs);
+	}
 
-    if (rx_buffer != NULL)
-    {
-        struct spi_buf rx_buf = {
-            .buf = rx_buffer,
-            .len = len};
-
-        struct spi_buf_set rx_bufs = {
-            .buffers = &rx_buf,
-            .count = 1};
-
-        spi_transceive_dt(&spi_drv_spec, &tx_bufs, &rx_bufs);
-    }
-    else
-        spi_write_dt(&spi_drv_spec, &tx_bufs);
+	return spi_write_dt(&config->bus, &tx_bufs);
 }
 
-void SD_powerUpSeq()
+static void sd_release_bus(const struct device *dev)
 {
-    spi_release_dt(&spi_drv_spec);
-    memset(spi_tx_buf, 0xff, 512);
+	const struct sd_drv_config *config = dev->config;
+	struct sd_drv_data *data = dev->data;
 
-    SD_spi_transceive(spi_tx_buf, NULL, 10);
-
-    spi_release_dt(&spi_drv_spec);
+	(void)sd_spi_transceive(dev, data->spi_tx_buf, NULL, 1U);
+	(void)spi_release_dt(&config->bus);
 }
 
-void SD_command(uint8_t cmd, uint32_t arg, uint8_t crc)
+static void sd_power_up_seq_locked(const struct device *dev)
 {
+	const struct sd_drv_config *config = dev->config;
+	struct sd_drv_data *data = dev->data;
 
-    uint8_t cmd_buf[7] = {0};
-    cmd_buf[0] = 0xFF;
-    cmd_buf[1] = cmd | 0x40;
-    cmd_buf[2] = (uint8_t)(arg >> 24);
-    cmd_buf[3] = (uint8_t)(arg >> 16);
-    cmd_buf[4] = (uint8_t)(arg >> 8);
-    cmd_buf[5] = (uint8_t)(arg);
-    cmd_buf[6] = crc | 0x01;
-
-    SD_spi_transceive(cmd_buf, NULL, 7);
+	(void)spi_release_dt(&config->bus);
+	memset(data->spi_tx_buf, 0xFF, sizeof(data->spi_tx_buf));
+	(void)sd_spi_transceive(dev, data->spi_tx_buf, NULL, 10U);
+	(void)spi_release_dt(&config->bus);
 }
 
-uint8_t SD_readRes1()
+static void sd_command_locked(const struct device *dev, uint8_t cmd,
+			      uint32_t arg, uint8_t crc)
 {
-    uint8_t i = 0, res1 = 0xFF;
-    // keep polling until actual data received
-    do
-    {
-        SD_spi_transceive(spi_tx_buf, &res1, 1);
-        i++;
-        // if no data received for 8 bytes, break
-        if (i > 8)
-            break;
-    } while (res1 == 0xFF);
+	uint8_t cmd_buf[7] = {0};
 
-    return res1;
+	cmd_buf[0] = 0xFF;
+	cmd_buf[1] = cmd | 0x40U;
+	cmd_buf[2] = (uint8_t)(arg >> 24);
+	cmd_buf[3] = (uint8_t)(arg >> 16);
+	cmd_buf[4] = (uint8_t)(arg >> 8);
+	cmd_buf[5] = (uint8_t)arg;
+	cmd_buf[6] = crc | 0x01U;
+
+	(void)sd_spi_transceive(dev, cmd_buf, NULL, sizeof(cmd_buf));
 }
 
-uint8_t SD_goIdleState()
+static uint8_t sd_read_res1_locked(const struct device *dev)
 {
+	struct sd_drv_data *data = dev->data;
+	uint8_t i = 0U;
+	uint8_t res1 = 0xFFU;
 
-    // send CMD0
-    SD_command(CMD0, CMD0_ARG, CMD0_CRC);
+	do {
+		if (sd_spi_transceive(dev, data->spi_tx_buf, &res1, 1U) != 0) {
+			return 0xFFU;
+		}
 
-    // read response
-    uint8_t res1 = SD_readRes1();
+		i++;
+		if (i > 8U) {
+			break;
+		}
+	} while (res1 == 0xFFU);
 
-    // Release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
-    return res1;
+	return res1;
 }
 
-void SD_readRes3_7(uint8_t *res)
+static uint8_t sd_go_idle_state_locked(const struct device *dev)
 {
-    // read response 1 in R7
-    res[0] = SD_readRes1();
+	uint8_t res1;
 
-    // if error reading R1, return
-    if (res[0] > 1)
-        return;
-    SD_spi_transceive(spi_tx_buf, &res[1], 4);
+	sd_command_locked(dev, CMD0, CMD0_ARG, CMD0_CRC);
+	res1 = sd_read_res1_locked(dev);
+	sd_release_bus(dev);
+
+	return res1;
 }
 
-void SD_sendIfCond(uint8_t *res)
+static void sd_read_res3_7_locked(const struct device *dev, uint8_t *res)
 {
+	struct sd_drv_data *data = dev->data;
 
-    // send CMD8
-    SD_command(CMD8, CMD8_ARG, CMD8_CRC);
+	res[0] = sd_read_res1_locked(dev);
+	if (res[0] > 1U) {
+		return;
+	}
 
-    // read response
-    SD_readRes3_7(res);
-
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
+	(void)sd_spi_transceive(dev, data->spi_tx_buf, &res[1], 4U);
 }
 
-void SD_readOCR(uint8_t *res)
+static void sd_send_if_cond_locked(const struct device *dev, uint8_t *res)
 {
-
-    // send CMD58
-    SD_command(CMD58, CMD58_ARG, CMD58_CRC);
-
-    // read response
-    SD_readRes3_7(res);
-
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
+	sd_command_locked(dev, CMD8, CMD8_ARG, CMD8_CRC);
+	sd_read_res3_7_locked(dev, res);
+	sd_release_bus(dev);
 }
 
-uint8_t SD_sendApp()
+static void sd_read_ocr_locked(const struct device *dev, uint8_t *res)
 {
-
-    // send CMD0
-    SD_command(CMD55, CMD55_ARG, CMD55_CRC);
-
-    // read response
-    uint8_t res1 = SD_readRes1();
-
-    // Release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
-    return res1;
+	sd_command_locked(dev, CMD58, CMD58_ARG, CMD58_CRC);
+	sd_read_res3_7_locked(dev, res);
+	sd_release_bus(dev);
 }
 
-uint8_t SD_sendOpCond()
+static uint8_t sd_send_app_locked(const struct device *dev)
 {
+	uint8_t res1;
 
-    // send CMD0
-    SD_command(ACMD41, ACMD41_ARG, ACMD41_CRC);
+	sd_command_locked(dev, CMD55, CMD55_ARG, CMD55_CRC);
+	res1 = sd_read_res1_locked(dev);
+	sd_release_bus(dev);
 
-    // read response
-    uint8_t res1 = SD_readRes1();
-
-    // Release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
-    return res1;
+	return res1;
 }
 
-void SD_printR1(uint8_t res)
+static uint8_t sd_send_op_cond_locked(const struct device *dev)
 {
-    if (res & 0b10000000)
-    {
-        printk("\tError: MSB = 1\r");
-        return;
-    }
-    if (res == 0)
-    {
-        printk("\t Card Ready \r");
-        return;
-    }
-    if (PARAM_ERROR(res))
-        printk("\tParameter Error\r");
-    if (ADDR_ERROR(res))
-        printk("\tAddress Error\r");
-    if (ERASE_SEQ_ERROR(res))
-        printk("\tErase Seq Error\r");
-    if (CRC_ERROR(res))
-        printk("\tCRC Error\r");
-    if (ILLEGAL_CMD(res))
-        printk("\tIllegal Cmd\r");
-    if (ERASE_RESET(res))
-        printk("\tErase Rst Error\r");
-    if (IN_IDLE(res))
-        printk("Idle State\r");
+	uint8_t res1;
+
+	sd_command_locked(dev, ACMD41, ACMD41_ARG, ACMD41_CRC);
+	res1 = sd_read_res1_locked(dev);
+	sd_release_bus(dev);
+
+	return res1;
 }
 
-void SD_printR7(uint8_t *res)
+static void sd_print_data_err_token(uint8_t token)
 {
-    SD_printR1(res[0]);
-
-    if (res[0] > 1)
-        return;
-
-    printk("\tCommand Version: %x", res[1]);
-
-    printk("\tVoltage Accepted: ");
-    if (VOL_ACC(res[3]) == VOLTAGE_ACC_27_33)
-        printk("2.7-3.6V\r");
-    else if (VOL_ACC(res[3]) == VOLTAGE_ACC_LOW)
-        printk("LOW VOLTAGE\r");
-    else if (VOL_ACC(res[3]) == VOLTAGE_ACC_RES1)
-        printk("RESERVED\r");
-    else if (VOL_ACC(res[3]) == VOLTAGE_ACC_RES2)
-        printk("RESERVED\r");
-    else
-        printk("NOT DEFINED");
-
-    printk("\tEcho: %x", res[4]);
+	if (SD_TOKEN_OOR(token)) {
+		LOG_ERR("Data out of range");
+	}
+	if (SD_TOKEN_CECC(token)) {
+		LOG_ERR("Card ECC failed");
+	}
+	if (SD_TOKEN_CC(token)) {
+		LOG_ERR("CC error");
+	}
+	if (SD_TOKEN_ERROR(token)) {
+		LOG_ERR("Generic data token error");
+	}
 }
 
-void SD_printR3(uint8_t *res)
+static void sd_log_r1(uint8_t res)
 {
-    SD_printR1(res[0]);
-
-    if (res[0] > 1)
-        return;
-
-    printk("\tCard Power Up Status: ");
-    if (POWER_UP_STATUS(res[1]))
-    {
-        printk("READY\r\n");
-        printk("\tCCS Status: ");
-        if (CCS_VAL(res[1]))
-        {
-            printk("1\r\n");
-        }
-        else
-            printk("0\r\n");
-    }
-    else
-    {
-        printk("BUSY\r\n");
-    }
-
-    printk("\tVDD Window: ");
-    if (VDD_2728(res[3]))
-        printk("2.7-2.8, ");
-    if (VDD_2829(res[2]))
-        printk("2.8-2.9, ");
-    if (VDD_2930(res[2]))
-        printk("2.9-3.0, ");
-    if (VDD_3031(res[2]))
-        printk("3.0-3.1, ");
-    if (VDD_3132(res[2]))
-        printk("3.1-3.2, ");
-    if (VDD_3233(res[2]))
-        printk("3.2-3.3, ");
-    if (VDD_3334(res[2]))
-        printk("3.3-3.4, ");
-    if (VDD_3435(res[2]))
-        printk("3.4-3.5, ");
-    if (VDD_3536(res[2]))
-        printk("3.5-3.6");
-    printk("\r\n");
+	if (res & 0b10000000U) {
+		LOG_ERR("R1 response MSB set");
+		return;
+	}
+	if (res == 0U) {
+		LOG_DBG("Card ready");
+		return;
+	}
+	if (PARAM_ERROR(res)) {
+		LOG_ERR("Parameter error");
+	}
+	if (ADDR_ERROR(res)) {
+		LOG_ERR("Address error");
+	}
+	if (ERASE_SEQ_ERROR(res)) {
+		LOG_ERR("Erase sequence error");
+	}
+	if (CRC_ERROR(res)) {
+		LOG_ERR("CRC error");
+	}
+	if (ILLEGAL_CMD(res)) {
+		LOG_ERR("Illegal command");
+	}
+	if (ERASE_RESET(res)) {
+		LOG_ERR("Erase reset error");
+	}
+	if (IN_IDLE(res)) {
+		LOG_DBG("Card idle");
+	}
 }
 
-void SD_printDataErrToken(uint8_t token)
+static uint8_t sd_read_start_locked(const struct device *dev, uint8_t *buf,
+				    uint16_t read_len, uint8_t *token)
 {
-    if (SD_TOKEN_OOR(token))
-        printk("\tData out of range\r\n");
-    if (SD_TOKEN_CECC(token))
-        printk("\tCard ECC failed\r\n");
-    if (SD_TOKEN_CC(token))
-        printk("\tCC Error\r\n");
-    if (SD_TOKEN_ERROR(token))
-        printk("\tError\r\n");
+	struct sd_drv_data *data = dev->data;
+	uint8_t res1;
+	uint8_t read = 0xFFU;
+	uint16_t read_attempts = 0U;
+
+	res1 = sd_read_res1_locked(dev);
+
+	if (res1 == SD_READY) {
+		do {
+			if (sd_spi_transceive(dev, data->spi_tx_buf, &read, 1U) != 0) {
+				break;
+			}
+			if (read_attempts == SD_MAX_READ_ATTEMPTS) {
+				break;
+			}
+			read_attempts++;
+		} while (read != SD_START_TOKEN);
+
+		if (read == SD_START_TOKEN) {
+			(void)sd_spi_transceive(dev, data->spi_tx_buf, buf, read_len);
+			(void)sd_spi_transceive(dev, data->spi_tx_buf, NULL, 2U);
+		}
+
+		*token = read;
+	}
+
+	return res1;
 }
 
-uint8_t SD_read_start(uint8_t *buf, uint16_t read_len, uint8_t *token)
+static uint8_t sd_read_single_block_locked(const struct device *dev, uint32_t addr,
+					   uint8_t *buf, uint8_t *token)
 {
-    uint8_t res1, read = 0xFF;
-    uint16_t readAttempts;
+	uint8_t res1;
 
-    // read R1
-    res1 = SD_readRes1();
+	*token = 0xFFU;
+	sd_command_locked(dev, CMD17, addr, CMD17_CRC);
+	res1 = sd_read_start_locked(dev, buf, SD_BLOCK_LEN, token);
+	sd_release_bus(dev);
 
-    // if response received from card
-    if (res1 == SD_READY)
-    {
-        // wait for a response token (timeout = 100ms)
-        readAttempts = 0;
-
-        do
-        {
-            SD_spi_transceive(spi_tx_buf, &read, 1);
-            if (readAttempts == SD_MAX_READ_ATTEMPTS)
-                break;
-            readAttempts++;
-        } while (read != 0xFE);
-
-        // if response token is 0xFE
-        if (read == 0xFE)
-        {
-            // read 512 byte block
-            SD_spi_transceive(spi_tx_buf, buf, read_len);
-            // read 16-bit CRC and a end byte
-            SD_spi_transceive(spi_tx_buf, NULL, 2);
-        }
-
-        // set token to card response
-        *token = read;
-    }
-
-    return res1;
+	return res1;
 }
 
-uint8_t SD_readCSD(uint8_t *CSD)
+static uint8_t sd_write_single_block_locked(const struct device *dev,
+					    uint32_t addr,
+					    const uint8_t *buf,
+					    uint8_t *token)
 {
-    uint8_t token, res1;
+	struct sd_drv_data *data = dev->data;
+	uint8_t write_attempts;
+	uint8_t read = 0xFFU;
+	uint8_t res1;
+	uint8_t start_token = SD_START_TOKEN;
 
-    // send CMD0
-    SD_command(CMD9, CMD9_ARG, CMD9_CRC);
+	*token = 0xFFU;
+	sd_command_locked(dev, CMD24, addr, CMD24_CRC);
+	res1 = sd_read_res1_locked(dev);
 
-    res1 = SD_read_start(CSD, 16, &token);
+	if (res1 == SD_READY) {
+		(void)sd_spi_transceive(dev, &start_token, NULL, 1U);
+		(void)sd_spi_transceive(dev, buf, NULL, SD_BLOCK_LEN);
 
-    // Release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
+		write_attempts = 0U;
+		while (write_attempts != SD_MAX_WRITE_ATTEMPTS) {
+			if (sd_spi_transceive(dev, data->spi_tx_buf, &read, 1U) != 0) {
+				break;
+			}
+			if (read != 0xFFU) {
+				break;
+			}
+			write_attempts++;
+		}
 
-    if (res1 == SD_READY)
-    {
-        // if error token received
-        if (!(token & 0xF0))
-        {
-            // SD_printDataErrToken(token);
-            return SD_READ_ERROR;
-        }
-        else if (token == 0xFF)
-        {
-            printk("Read Timeout\r\n");
-            return SD_READ_ERROR;
-        }
-        return SD_READ_SUCCESS;
-    }
-    else
-    {
-        // SD_printR1(res1);
-        return SD_READ_ERROR;
-    }
+		if ((read & 0x1FU) == 0x05U) {
+			*token = 0x05U;
+
+			write_attempts = 0U;
+			read = 0U;
+			do {
+				if (sd_spi_transceive(dev, data->spi_tx_buf, &read, 1U) != 0) {
+					break;
+				}
+				if (write_attempts == SD_MAX_WRITE_ATTEMPTS) {
+					*token = 0x00U;
+					break;
+				}
+				write_attempts++;
+			} while (read == 0U);
+		}
+	}
+
+	sd_release_bus(dev);
+
+	return res1;
 }
 
-uint8_t SD_readSingleBlock(uint32_t addr, uint8_t *buf, uint8_t *token)
+static sd_ret_t sd_drv_card_init_locked(const struct device *dev)
 {
-    // set token to none
-    *token = 0xFF;
+	const struct sd_drv_config *config = dev->config;
+	struct sd_drv_data *data = dev->data;
+	uint8_t res[5] = {0};
+	uint8_t cmd_attempts = 0U;
 
-    // send CMD17
-    SD_command(CMD17, addr, CMD17_CRC);
-    uint8_t res1 = SD_read_start(buf, SD_BLOCK_LEN, token);
+	if (data->initialized) {
+		return SD_INIT_SUCCESS;
+	}
 
-    // Release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
+	if (!spi_is_ready_dt(&config->bus)) {
+		return SD_INIT_ERROR;
+	}
 
-    return res1;
+	sd_power_up_seq_locked(dev);
+
+	while ((res[0] = sd_go_idle_state_locked(dev)) != 0x01U) {
+		cmd_attempts++;
+		if (cmd_attempts > 50U) {
+			if (res[0] == 0U) {
+				LOG_ERR("Card not found");
+			} else {
+				sd_log_r1(res[0]);
+			}
+			return SD_INIT_ERROR;
+		}
+	}
+
+	sd_send_if_cond_locked(dev, res);
+	if (res[0] != 0x01U) {
+		sd_log_r1(res[0]);
+		return SD_INIT_ERROR;
+	}
+
+	if (res[4] != 0xAAU) {
+		LOG_ERR("Unexpected CMD8 echo pattern: 0x%02x", res[4]);
+		return SD_INIT_ERROR;
+	}
+
+	cmd_attempts = 0U;
+	do {
+		if (cmd_attempts > 100U) {
+			return SD_INIT_ERROR;
+		}
+
+		res[0] = sd_send_app_locked(dev);
+		if (res[0] < 2U) {
+			res[0] = sd_send_op_cond_locked(dev);
+		}
+
+		k_sleep(K_MSEC(10));
+		cmd_attempts++;
+	} while (res[0] != SD_READY);
+
+	sd_read_ocr_locked(dev, res);
+	if (!POWER_UP_STATUS(res[1])) {
+		LOG_ERR("Card did not power up");
+		return SD_INIT_ERROR;
+	}
+
+	if (CCS_VAL(res[1])) {
+		LOG_INF("Card Type: SDHC");
+	} else {
+		LOG_WRN("Card does not report SDHC CCS");
+	}
+
+	data->initialized = true;
+	return SD_INIT_SUCCESS;
 }
 
-uint8_t SD_readSector(uint32_t addr, uint8_t *buf)
+static sd_ret_t sd_drv_card_init_impl(const struct device *dev)
 {
-    uint8_t res1, token;
+	struct sd_drv_data *data = dev->data;
+	sd_ret_t ret;
 
-    res1 = SD_readSingleBlock(addr, buf, &token);
-    if (res1 == SD_READY)
-    {
-        // if error token received
-        if (!(token & 0xF0))
-        {
-            SD_printDataErrToken(token);
-            return SD_READ_ERROR;
-        }
-        else if (token == 0xFF)
-        {
-            printk("Read Timeout\r\n");
-            return SD_READ_ERROR;
-        }
-        return SD_READ_SUCCESS;
-    }
-    else
-    {
-        // SD_printR1(res1);
-        return SD_READ_ERROR;
-    }
+	k_mutex_lock(&data->lock, K_FOREVER);
+	ret = sd_drv_card_init_locked(dev);
+	k_mutex_unlock(&data->lock);
+
+	return ret;
 }
 
-uint8_t _writeSingleBlock(uint32_t addr, uint8_t *buf, uint8_t *token)
+static sd_ret_t sd_drv_read_sector_impl(const struct device *dev, uint32_t addr,
+					uint8_t *buf)
 {
-    uint8_t writeAttempts, read, res1;
+	struct sd_drv_data *data = dev->data;
+	uint8_t res1;
+	uint8_t token;
+	sd_ret_t ret = SD_READ_ERROR;
 
-    // set token to none
-    *token = 0xFF;
+	if (buf == NULL) {
+		return SD_READ_ERROR;
+	}
 
-    // send CMD24
-    SD_command(CMD24, addr, CMD24_CRC);
+	k_mutex_lock(&data->lock, K_FOREVER);
 
-    // read response
-    res1 = SD_readRes1();
+	if (sd_drv_card_init_locked(dev) != SD_INIT_SUCCESS) {
+		ret = SD_INIT_ERROR;
+		goto out;
+	}
 
-    // if no error
-    if (res1 == SD_READY)
-    {
-        uint8_t start_token = SD_START_TOKEN;
-        // send start token
-        SD_spi_transceive(&start_token, NULL, 1);
+	res1 = sd_read_single_block_locked(dev, addr, buf, &token);
+	if (res1 == SD_READY) {
+		if (!(token & 0xF0U)) {
+			sd_print_data_err_token(token);
+		} else if (token == 0xFFU) {
+			LOG_ERR("Read timeout");
+		} else {
+			ret = SD_READ_SUCCESS;
+		}
+	} else {
+		sd_log_r1(res1);
+	}
 
-        // write buffer to card
-        SD_spi_transceive(spi_tx_buf, buf, SD_BLOCK_LEN);
-        // wait for a response (timeout = 250ms)
-        writeAttempts = 0;
-
-        while (writeAttempts != SD_MAX_WRITE_ATTEMPTS)
-        {
-            SD_spi_transceive(spi_tx_buf, &read, 1);
-            if (read != 0xFF)
-                break;
-            writeAttempts++;
-        }
-        // if data accepted
-        if ((read & 0x1F) == 0x05)
-        {
-            // set token to data accepted
-            *token = 0x05;
-
-            // wait for write to finish (timeout = 250ms)
-            writeAttempts = 0;
-            read = 0;
-            do
-            {
-                SD_spi_transceive(spi_tx_buf, &read, 1);
-                if (writeAttempts == SD_MAX_WRITE_ATTEMPTS)
-                {
-                    *token = 0x00;
-                    break;
-                }
-                writeAttempts++;
-            } while (read == 0);
-        }
-    }
-
-    // send a padding byte and Release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
-
-    return res1;
+out:
+	k_mutex_unlock(&data->lock);
+	return ret;
 }
 
-uint8_t SD_writeSector(uint32_t addr, uint8_t *buf)
+static sd_ret_t sd_drv_write_sector_impl(const struct device *dev, uint32_t addr,
+					 const uint8_t *buf)
 {
-    uint8_t token, res1;
-    res1 = _writeSingleBlock(addr, buf, &token);
+	struct sd_drv_data *data = dev->data;
+	uint8_t token;
+	uint8_t res1;
+	sd_ret_t ret = SD_WRITE_ERROR;
 
-    if (res1 == SD_READY)
-    {
-        if (token == 0x05)
-            return SD_WRITE_SUCCESS;
-        else if (token == 0xFF || token == 0x00)
-            return SD_WRITE_ERROR;
-    }
-    else
-    {
-        // SD_printR1(res1);
-        return SD_WRITE_ERROR;
-    }
-    return SD_WRITE_ERROR;
+	if (buf == NULL) {
+		return SD_WRITE_ERROR;
+	}
+
+	k_mutex_lock(&data->lock, K_FOREVER);
+
+	if (sd_drv_card_init_locked(dev) != SD_INIT_SUCCESS) {
+		ret = SD_INIT_ERROR;
+		goto out;
+	}
+
+	res1 = sd_write_single_block_locked(dev, addr, buf, &token);
+	if (res1 == SD_READY) {
+		if (token == 0x05U) {
+			ret = SD_WRITE_SUCCESS;
+		}
+	} else {
+		sd_log_r1(res1);
+	}
+
+out:
+	k_mutex_unlock(&data->lock);
+	return ret;
 }
 
-uint8_t SD_readMultipleSecStart(uint32_t start_addr)
+static uint8_t sd_drv_read_multiple_start_impl(const struct device *dev,
+					       uint32_t start_addr)
 {
-    uint8_t res1;
+	struct sd_drv_data *data = dev->data;
+	uint8_t res1 = 0xFFU;
 
-    // send CMD24
-    SD_command(CMD18, start_addr, CMD18_CRC);
+	k_mutex_lock(&data->lock, K_FOREVER);
 
-    // read response
-    res1 = SD_readRes1();
+	if (sd_drv_card_init_locked(dev) != SD_INIT_SUCCESS) {
+		k_mutex_unlock(&data->lock);
+		return SD_INIT_ERROR;
+	}
 
-    return res1;
+	if (data->multi_read_active) {
+		k_mutex_unlock(&data->lock);
+		return SD_READ_ERROR;
+	}
+
+	sd_command_locked(dev, CMD18, start_addr, CMD18_CRC);
+	res1 = sd_read_res1_locked(dev);
+	if (res1 == SD_READY) {
+		data->multi_read_active = true;
+		return res1;
+	}
+
+	sd_release_bus(dev);
+	k_mutex_unlock(&data->lock);
+	return res1;
 }
 
-sd_ret_t SD_readMultipleSec(uint8_t *buff)
+static sd_ret_t sd_drv_read_multiple_impl(const struct device *dev, uint8_t *buf)
 {
-    uint8_t read = 0xFF;
-    uint32_t readAttempts;
+	struct sd_drv_data *data = dev->data;
+	uint8_t read = 0xFFU;
+	uint32_t read_attempts = 0U;
 
-    // wait for a response token (timeout = 100ms)
-    readAttempts = 0;
+	if ((buf == NULL) || !data->multi_read_active) {
+		return SD_READ_ERROR;
+	}
 
-    do
-    {
-        SD_spi_transceive(spi_tx_buf, &read, 1);
-        if (readAttempts == SD_MAX_READ_ATTEMPTS)
-            break;
-        readAttempts++;
-    } while (read != 0xFE);
+	do {
+		if (sd_spi_transceive(dev, data->spi_tx_buf, &read, 1U) != 0) {
+			return SD_READ_ERROR;
+		}
+		if (read_attempts == SD_MAX_READ_ATTEMPTS) {
+			break;
+		}
+		read_attempts++;
+	} while (read != SD_START_TOKEN);
 
-    // if response token is 0xFE
-    if (read == 0xFE)
-    {
-        SD_spi_transceive(spi_tx_buf, buff, SD_BLOCK_LEN);
+	if (read == SD_START_TOKEN) {
+		(void)sd_spi_transceive(dev, data->spi_tx_buf, buf, SD_BLOCK_LEN);
+		(void)sd_spi_transceive(dev, data->spi_tx_buf, NULL, 3U);
+	}
 
-        // read 16-bit CRC and end byte
-        SD_spi_transceive(spi_tx_buf, NULL, 3);
-    }
+	if (!(read & 0xF0U)) {
+		sd_print_data_err_token(read);
+		return SD_READ_ERROR;
+	}
+	if (read == 0xFFU) {
+		LOG_ERR("Read timeout");
+		return SD_READ_ERROR;
+	}
 
-    if (!(read & 0xF0))
-    {
-        SD_printDataErrToken(read);
-        return SD_READ_ERROR;
-    }
-    else if (read == 0xFF)
-    {
-        printk("Read Timeout\r\n");
-        return SD_READ_ERROR;
-    }
-    return SD_READ_SUCCESS;
+	return SD_READ_SUCCESS;
 }
 
-void SD_readMultipleSecStop()
+static void sd_drv_read_multiple_stop_impl(const struct device *dev)
 {
-    SD_command(CMD12, CMD12_ARG, CMD12_CRC);
-    uint8_t read = 0;
+	struct sd_drv_data *data = dev->data;
+	uint8_t read = 0U;
 
-    do
-    {
-        SD_spi_transceive(spi_tx_buf, &read, 1);
-    } while (read == 0);
+	if (!data->multi_read_active) {
+		return;
+	}
 
-    // release SPI bus
-    SD_spi_transceive(spi_tx_buf, NULL, 1);
-    spi_release_dt(&spi_drv_spec);
+	sd_command_locked(dev, CMD12, CMD12_ARG, CMD12_CRC);
+	do {
+		if (sd_spi_transceive(dev, data->spi_tx_buf, &read, 1U) != 0) {
+			break;
+		}
+	} while (read == 0U);
+
+	sd_release_bus(dev);
+	data->multi_read_active = false;
+	k_mutex_unlock(&data->lock);
 }
 
-uint8_t SD_drv_init()
+static int sd_drv_device_init(const struct device *dev)
 {
-    printk("Using custom SDHC driver by SURYA POUDEL\n");
-    // uint8_t csd_reg[16];
-    uint8_t res[5], cmdAttempts = 0;
+	const struct sd_drv_config *config = dev->config;
+	struct sd_drv_data *data = dev->data;
 
-    if (!spi_is_ready_dt(&spi_drv_spec))
-    {
-        return SD_INIT_ERROR;
-    }
+	if (!spi_is_ready_dt(&config->bus)) {
+		LOG_ERR("SPI bus is not ready");
+		return -ENODEV;
+	}
 
-    SD_powerUpSeq();
-    // command card to idle
-    while ((res[0] = SD_goIdleState()) != 0x01)
-    {
-        cmdAttempts++;
-        if (cmdAttempts > 50)
-        {
-            if (res[0] == 0)
-            {
-                printk("Card Not Found!\n");
-            }
-            // SD_printR1(res[0]);
-            return SD_INIT_ERROR;
-        }
-    }
-    // send interface conditions
-    SD_sendIfCond(res);
-    if (res[0] != 0x01)
-    {
-        // SD_printR1(res[0]);
-        return SD_INIT_ERROR;
-    }
+	k_mutex_init(&data->lock);
+	memset(data->spi_tx_buf, 0xFF, sizeof(data->spi_tx_buf));
+	data->initialized = false;
+	data->multi_read_active = false;
 
-    // check echo pattern
-    if (res[4] != 0xAA)
-    {
-        // SD_printR7(res);
-        return SD_INIT_ERROR;
-    }
-
-    // attempt to initialize card
-    cmdAttempts = 0;
-    do
-    {
-        if (cmdAttempts > 100)
-            return SD_INIT_ERROR;
-
-        // send app cmd
-        res[0] = SD_sendApp();
-
-        // if no error in response
-        if (res[0] < 2)
-        {
-            res[0] = SD_sendOpCond();
-        }
-
-        // wait
-        k_sleep(K_MSEC(10));
-
-        cmdAttempts++;
-    } while (res[0] != SD_READY);
-
-    // read OCR
-    SD_readOCR(res);
-    // check card is ready
-    if (!(res[1] & 0x80))
-    {
-        // SD_printR3(res);
-        return SD_INIT_ERROR;
-    }
-    else
-    {
-        if (res[1] & 0x40)
-            printk("Card Type: SDHC \n");
-    }
-    return SD_INIT_SUCCESS;
+	return 0;
 }
 
-/*
-uint8_t _writeMultipleBlock(uint32_t start_addr, uint8_t blockCnt, uint8_t *token)
-{
-    uint8_t writeAttempts, read, res1;
+static const sd_drv_api_t api = {
+	.card_init = sd_drv_card_init_impl,
+	.read_sector = sd_drv_read_sector_impl,
+	.write_sector = sd_drv_write_sector_impl,
+	.read_multiple_start = sd_drv_read_multiple_start_impl,
+	.read_multiple = sd_drv_read_multiple_impl,
+	.read_multiple_stop = sd_drv_read_multiple_stop_impl,
+};
 
-    // set token to none
-    *token = 0xFF;
-    // send CMD25
-    SD_command(CMD25, start_addr, CMD25_CRC);
+#define SD_DRV_DEFINE(inst)                                                     \
+	static struct sd_drv_data sd_drv_data_##inst;                          \
+	static const struct sd_drv_config sd_drv_config_##inst = {             \
+		.bus = SPI_DT_SPEC_INST_GET(                                   \
+			inst, SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB |          \
+				      SPI_WORD_SET(8) | SPI_HOLD_ON_CS |     \
+				      SPI_LOCK_ON),                         \
+	};                                                                  \
+	DEVICE_DT_INST_DEFINE(inst, sd_drv_device_init, NULL,                 \
+			      &sd_drv_data_##inst, &sd_drv_config_##inst,      \
+			      POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE, \
+			      &api);
 
-    // read response
-    res1 = SD_readRes1();
-
-    // if no error
-    if (res1 == SD_READY)
-    {
-        printk("Enter text:");
-        while (blockCnt--)
-        {
-            uint8_t write_buff[512] = {0};
-            int i = 0;
-            while (i < 512)
-            {
-                while (!Serial.available())
-                    ;
-
-                write_buff[i++] = Serial.read();
-            }
-
-            // send start token
-            SPI.transfer(0xFC);
-
-            // write buffer to card
-            for (uint16_t i = 0; i < SD_BLOCK_LEN; i++)
-                SPI.transfer(write_buff[i]);
-            // wait for a response (timeout = 250ms)
-            writeAttempts = 0;
-
-            while (writeAttempts != SD_MAX_WRITE_ATTEMPTS)
-            {
-                if ((read = SPI.transfer(0xFF)) != 0xFF)
-                    break;
-                writeAttempts++;
-            }
-            // if data accepted
-            if ((read & 0x1F) == 0x05)
-            {
-                // set token to data accepted
-                *token = 0x05;
-
-                // wait for write to finish (timeout = 250ms)
-                writeAttempts = 0;
-                while (SPI.transfer(0xFF) == 0x00)
-                {
-                    if (writeAttempts == SD_MAX_WRITE_ATTEMPTS)
-                    {
-                        *token = 0x00;
-                        break;
-                    }
-                    writeAttempts++;
-                }
-                if (writeAttempts < SD_MAX_WRITE_ATTEMPTS)
-                {
-                    printk("Block write success!");
-                }
-            }
-        }
-        // stop writing
-        SPI.transfer(0xFD);
-    }
-
-    // deassert chip select
-     SD_spi_transceive(spi_tx_buf, NULL, 1);
-spi_release_dt(&spi_drv_spec);
-
-    return res1;
-}
-
-uint8_t SD_writeMultipleBlock(uint32_t start_addr, uint8_t blockCnt)
-{
-
-    uint8_t token, res1;
-    res1 = _writeMultipleBlock(start_addr, blockCnt, &token);
-
-    if (res1 == SD_READY)
-    {
-        if (token == 0x05)
-            return SD_WRITE_SUCCESS;
-        else if (token == 0xFF || token == 0x00)
-            return SD_WRITE_ERROR;
-    }
-
-    SD_printR1(res1);
-    return SD_WRITE_ERROR;
-}
-
-void writeMultipleSecStop(){
-    uint8_t stop_token=0xFD;
-     SD_spi_transceive(&stop_token,NULL, 1);
-}
-*/
+DT_INST_FOREACH_STATUS_OKAY(SD_DRV_DEFINE)

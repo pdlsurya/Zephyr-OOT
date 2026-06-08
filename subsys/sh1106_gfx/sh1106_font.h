@@ -1,4 +1,4 @@
-#include "sh1106_gfx.h"
+#include <zephyr_oot/subsys/sh1106_gfx.h>
 
 
 const  uint8_t font6x8[]=

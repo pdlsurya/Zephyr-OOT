@@ -1,0 +1,13 @@
+sample:
+  name: ESP32-C6 blinky
+  description: Minimal LED blink sample for esp32c6_custom using the local OOT module workspace
+tests:
+  sample.oot.esp32c6_blinky:
+    build_only: true
+    platform_allow:
+      - esp32c6_custom/esp32c6/hpcore
+    integration_platforms:
+      - esp32c6_custom/esp32c6/hpcore
+    tags:
+      - gpio
+      - esp32

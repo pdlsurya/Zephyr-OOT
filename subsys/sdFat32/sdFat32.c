@@ -25,45 +25,32 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/sd/sdmmc.h>
-#include <zephyr/drivers/sdhc.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sdFat32.h"
+#include <zephyr_oot/drivers/SD_drv.h>
+#include <zephyr_oot/subsys/sdFat32.h>
 
-typedef enum
-{
-	SD_READY,
-	SD_INIT_SUCCESS,
-	SD_INIT_ERROR,
-	SD_READ_SUCCESS,
-	SD_READ_ERROR,
-	SD_WRITE_SUCCESS,
-	SD_WRITE_ERROR
-} sd_ret_t;
-
-static const struct device *sdDev = DEVICE_DT_GET(DT_NODELABEL(microsd));
-static struct sd_card sdCard;
+static const struct device *const sd_dev = DEVICE_DT_GET(DT_NODELABEL(microsd));
 
 static sd_ret_t storageInit(void)
 {
-	if (!device_is_ready(sdDev))
+	if (!device_is_ready(sd_dev))
 	{
 		return SD_INIT_ERROR;
 	}
 
-	return sd_init(sdDev, &sdCard) == 0 ? SD_INIT_SUCCESS : SD_INIT_ERROR;
+	return sd_drv_card_init(sd_dev);
 }
 
 static sd_ret_t storageReadSector(uint32_t lba, uint8_t *buffer)
 {
-	return sdmmc_read_blocks(&sdCard, buffer, lba, 1) == 0 ? SD_READ_SUCCESS : SD_READ_ERROR;
+	return sd_drv_read_sector(sd_dev, lba, buffer);
 }
 
 static sd_ret_t storageWriteSector(uint32_t lba, uint8_t *buffer)
 {
-	return sdmmc_write_blocks(&sdCard, buffer, lba, 1) == 0 ? SD_WRITE_SUCCESS : SD_WRITE_ERROR;
+	return sd_drv_write_sector(sd_dev, lba, buffer);
 }
 
 static bootSecParams_t params;
