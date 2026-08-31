@@ -40,11 +40,14 @@ Public headers are exported under `include/zephyr_oot/`, for example:
 
 The repo is currently being exercised against Zephyr `4.3.0`.
 
+In the examples below, `/path/to/zephyrproject` means the main Zephyr workspace
+that contains the upstream `zephyr/` tree.
+
 The ESP32-family samples also need the Espressif blobs fetched in the Zephyr
 workspace:
 
 ```sh
-cd ~/zephyrproject
+cd /path/to/zephyrproject
 west blobs fetch hal_espressif
 ```
 
@@ -58,13 +61,13 @@ For a generic application outside this repo, point `EXTRA_ZEPHYR_MODULES` at the
 repository root:
 
 ```sh
-export EXTRA_ZEPHYR_MODULES=~/EmbeddedProjects/Zephyr-OOT
+export EXTRA_ZEPHYR_MODULES=/path/to/zephyr-oot
 ```
 
 or append it from CMake:
 
 ```cmake
-get_filename_component(OOT_MODULE_DIR "/absolute/path/to/Zephyr-OOT" REALPATH)
+get_filename_component(OOT_MODULE_DIR "/path/to/zephyr-oot" REALPATH)
 list(APPEND EXTRA_ZEPHYR_MODULES "${OOT_MODULE_DIR}")
 ```
 
@@ -132,7 +135,7 @@ local board work before it is buildable in a fresh workspace.
 From inside the sample directories:
 
 ```sh
-source ~/zephyrproject/zephyr/zephyr-env.sh
+source /path/to/zephyrproject/zephyr/zephyr-env.sh
 west build -b esp32c6_custom/esp32c6/hpcore
 ```
 
